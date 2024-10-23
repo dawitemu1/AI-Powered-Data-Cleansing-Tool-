@@ -327,21 +327,43 @@ if st.sidebar.button('Detect Outliers'):
 # Separator for Outlier removal section
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
+
 # Section to Remove Outliers
 st.sidebar.header('6. Outlier Removal')
+
+# Dropdown to select numerical columns for outlier detection
+outlier_column = st.sidebar.selectbox('Select Numerical Column for Outlier Removal', numerical_columns)
+
+# Add a radio box for the method of outlier removal
+removal_method = st.sidebar.radio('Select Outlier Removal Method', ['Z-score', 'IQR'])
 
 # Button to remove outliers
 if st.sidebar.button('Remove Outliers'):
     if outlier_column and outliers_detected is not None:
         original_shape = dataset.shape
+
+        # Remove outliers based on the selected method
+        if removal_method == 'Z-score':
+            outliers_detected = detect_outliers(dataset, 'Z-score', outlier_column)
+        elif removal_method == 'IQR':
+            outliers_detected = detect_outliers(dataset, 'IQR', outlier_column)
+
         dataset_cleaned = remove_outliers(dataset, outliers_detected)
-        st.write(f"Outliers removed from '{outlier_column}'. Original shape: {original_shape}, New shape: {dataset_cleaned.shape}")
+        st.write(f"Outliers removed from '{outlier_column}' using {removal_method}. Original shape: {original_shape}, New shape: {dataset_cleaned.shape}")
         
+        # Display boxplot before outlier removal
+        st.write(f"Box Plot for '{outlier_column}' before outlier removal:")
+        fig_before, ax_before = plt.subplots(figsize=(6, 4))
+        sns.boxplot(x=dataset[outlier_column], ax=ax_before)
+        ax_before.set_title(f'Before Outlier Removal ({removal_method})')
+        st.pyplot(fig_before)
+
         # Display boxplot after outlier removal
         st.write(f"Box Plot for '{outlier_column}' after outlier removal:")
-        fig, ax = plt.subplots()
-        sns.boxplot(x=dataset_cleaned[outlier_column], ax=ax)
-        st.pyplot(fig)
+        fig_after, ax_after = plt.subplots(figsize=(6, 4))
+        sns.boxplot(x=dataset_cleaned[outlier_column], ax=ax_after)
+        ax_after.set_title(f'After Outlier Removal ({removal_method})')
+        st.pyplot(fig_after)
         
         # Allow the user to download the dataset without outliers
         csv_data = convert_df_to_csv(dataset_cleaned)
@@ -351,6 +373,8 @@ if st.sidebar.button('Remove Outliers'):
             file_name='cleaned_data_no_outliers.csv',
             mime='text/csv'
         )
+
+
 
 # Final separator
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
