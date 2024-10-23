@@ -31,7 +31,7 @@ custom_css = """
 # st.markdown(custom_css, unsafe_allow_html=True)
 # st.image("logo.jpg", width=400)  # Change "logo.png" to the path of your logo image file
 # # Setting the title with Markdown and center-aligning
-st.markdown('<h1 style="text-align: center;">Explore Loan EDA Dynamics CBE</h1>', unsafe_allow_html=True)
+st.markdown('<h1 style="text-align: center;">AI Powered Data Quality Tool </h1>', unsafe_allow_html=True)
 
 # Defining background color
 st.markdown(
@@ -64,140 +64,7 @@ def load_data(file_path):
     return pd.read_excel(file_path)
 
 
-@st.cache_data
-def plot_categorical_feature(data, categorical_feature, figsize1=(8, 5), figsize2=(6, 6), figsize3=(12, 8)):
-    plt.style.use('fivethirtyeight')
-    sns.set(style="whitegrid")
-    # Convert the 'edhs_year' column to string
-    data['year'] = data['year'].astype(str)
 
-    try:
-        # Create a figure with a grid layout
-        fig = plt.figure(figsize=(figsize1[0] + figsize2[0], max([figsize1[1], figsize2[1]])))
-        gs = gridspec.GridSpec(1, 2, width_ratios=[figsize1[0], figsize2[0]])
-
-        # First Subplot
-        ax0 = plt.subplot(gs[0])
-        ax0.set_title(f'Distribution by {categorical_feature}')
-        sns.countplot(data=data, x=categorical_feature, order=data[categorical_feature].value_counts().index, ax=ax0)
-        ax0.set_xlabel(categorical_feature)
-        ax0.set_ylabel("Count")
-        ax0.tick_params(axis='x', rotation=80)
-
-        # Add labels on top of the bars
-        for p in ax0.patches:
-            ax0.annotate(f'{int(p.get_height())}', (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='bottom', fontsize=8, color='black')
-
-        # Second(pie chart) Subplot
-        ax2 = plt.subplot(gs[1])
-        ax2.set_title(f'Distribution by {categorical_feature}')
-        data[categorical_feature].value_counts().plot.pie(autopct='%1.1f%%',  shadow=True, ax=ax2)
-
-        # Another Bar chart
-        fig2, ax1 = plt.subplots(figsize=figsize3)
-        ax1.set_title(f'Distribution by {categorical_feature} and Loan year')
-        sns.countplot(data=data, x=categorical_feature, hue='year', order=data[categorical_feature].value_counts().index, ax=ax1)
-        ax1.set_xlabel(categorical_feature)
-        ax1.set_ylabel("Count")
-        ax1.tick_params(axis='x', rotation=80)
-
-        # Add labels on top of the bars
-        for p in ax1.patches:
-            ax1.annotate(f'{int(p.get_height())}', (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='bottom', fontsize=8, color='black')
-
-        # Show the figures
-        st.write(fig)
-        st.pyplot(fig2)
-
-    except Exception as e:
-        st.error(f"An error occurred while plotting: {e}")
-
-
-# Function to display frequency distribution table
-@st.cache_data
-def display_frequency_distribution(dataset, categorical_feature):
-    st.write('===================================================================')
-    st.write(f'     Percentage distribution of {categorical_feature} feature category based on different CBE_Loan year')
-    st.write('===================================================================')
-
-    result = pd.crosstab(
-        index=dataset[categorical_feature],
-        columns=dataset['year'],
-        values=dataset['LOAN_STATUS'],
-        aggfunc='count',
-        margins=True,  # Added 'margins' for total row/column
-        margins_name='Total'  # Custom name for the 'margins' column/row
-    )
-    result['|'] = '|'
-
-    for year in result.columns[:6]:  # Exclude the last column 'Total'
-        result[f'{year}(%)'] = (result[year] / result[year]['Total']) * 100
-
-    # Round the percentage values to 1 decimal place
-    result = result.round(1).fillna(0)
-
-    # Display the table using st.dataframe
-    st.dataframe(result)
-    st.write('====================================================================')
-
-######################## Correlation Analysis ##############################################
-# Function to generate the correlation analysis
-@st.cache_data
-def correlation_analysis(dataset, selected_features, selected_years):
-    # Filter dataset based on selected loan years
-    selected_data = dataset[dataset['year'].isin(selected_years)]
-
-    # Filter dataset based on selected numerical features
-    selected_data = selected_data[selected_features]
-
-    # Calculate the correlation matrix
-    corr = selected_data.corr()
-
-    # Calculate p-values
-    p_values = pd.DataFrame(index=corr.index, columns=corr.columns)
-
-    for i in range(len(corr)):
-        for j in range(len(corr.columns)):
-            coef, p_value = pearsonr(selected_data.iloc[:, i], selected_data.iloc[:, j])
-            p_values.iloc[i, j] = p_value
-
-    # Round correlation matrix to three decimal places
-    corr = corr.round(3)
-
-    # Increase the figure size
-    plt.figure(figsize=(16, 12))
-
-    # Plot the correlation heatmap
-    sns.heatmap(corr, fmt=".3f", cmap='Blues', cbar_kws={'shrink': 0.8})
-
-    # Manually add text annotations for both correlation and p-values
-    for i in range(len(corr)):
-        for j in range(len(corr.columns)):
-            text = plt.text(j + 0.5, i + 0.5, f"{corr.iloc[i, j]:.3f}\n(p={p_values.iloc[i, j]:.3f})",
-                            ha='center', va='center', color='black', fontsize=10)
-
-    plt.title(f"Correlation Plot of selected Features for Loan Years {', '.join(map(str, selected_years))}")
-    st.pyplot(plt)
-#########################################################################
-
-# # Additional styling for the overview section
-# st.markdown(
-#     """
-#     ## Welcome to Loan Status EDA Tool!
-
-#     Explore the dynamics of Loan Status in CBE across different Loan years. This interactive tool, powered by exploratory data analysis (EDA), offers insights into key trends.
-
-#     ### What You Can Do:
-#     1. Feature Distribution: Examine feature distributions on both aggregated and by specific loan year.
-#     2. Bivariate Analysis: Examine feature Selected feature with Loan_status aggregated  year
-#     3. Correlation Analysis: Understand feature correlations for any CBE year.
-#     4. Generete report: generate report yearly, monthly, weekly, daily for seelected features with loan_status 
-#     5. Generate Quarterly Report: Generate reprot Quarterly with specfic year and feature.
-#     6. In single year report and quartly report model show total loan_status for selected granurilty and quarter
-
-#     Dive into the rich data of CBE from 2014 to 2024, interact, and uncover valuable insights!
-#     """
-# )
 
 # Load cleaned data
 def load_data(file):
@@ -251,43 +118,7 @@ allowed_features = [col for col in dataset.columns if col not in excluded_featur
 def horizontal_line(height=1, color="blue", margin="0.5em 0"): # color="#ddd"
     return f'<hr style="height: {height}px; margin: {margin}; background-color: {color};">'
 
-# Sidebar for selecting parametersNavigation_Menu',
-st.sidebar.header('Parameters')
 
-####################### 1. Feature Distribution of UFM ##################################
-st.sidebar.markdown('### Feature Distribution')
-# Allow the user to select a feature
-selected_feature = st.sidebar.selectbox('Select Feature', allowed_features)
-
-# Display distribution plots and tables based on the selected feature
-if st.sidebar.button('Show Distribution'):
-    st.subheader(f'Frequency Distribution of {selected_feature}')
-    display_frequency_distribution(dataset, selected_feature)
-    st.subheader(f'Distribution of {selected_feature}')
-    plot_categorical_feature(dataset, selected_feature)
-
-# Separator
-st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
-
-
-
-####################### 2. Correlation Analysis ###################################################
-st.sidebar.header('Correlation Analysis')
-# Filter numerical features only
-numerical_features = dataset.select_dtypes(include=['number']).columns
-
-# Allow the user to select the features
-selected_features = st.sidebar.multiselect('Select Features for Correlation', numerical_features, key='features')
-
-# Allow the user to select multiple EDHS years using a multiselect
-selected_years = st.sidebar.multiselect('Select Loan Years', dataset['year'].unique(), key='years')
-
-# Button to generate correlation matrix
-if st.sidebar.button('Generate Correlation Matrix'):
-    correlation_analysis(dataset, selected_features, selected_years)
-
-# Separator
-st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
 
 ####################### 3. Data quality ###################################################
@@ -296,7 +127,9 @@ import streamlit as st
 import missingno as msno
 import matplotlib.pyplot as plt
 from sklearn.impute import KNNImputer
-import io
+from scipy.stats import zscore
+import numpy as np
+import seaborn as sns
 
 # Function to fill missing values
 def fill_missing_values(dataset):
@@ -341,17 +174,59 @@ def display_missing_values(dataset, view_option):
         st.write('Bar Graph of Missing Values by Feature:')
         fig, ax = plt.subplots(figsize=(10, 6))  # Create a new figure
         msno.bar(dataset, ax=ax)  # Pass the axis to msno.bar()
-        st.pyplot(fig)  # Render the plot in Streamlit
+        st.pyplot(fig)
+
+# Function to check for duplicates
+def check_duplicates(dataset):
+    duplicates_count = dataset.duplicated().sum()
+    return duplicates_count
+
+# Function to drop duplicates
+def drop_duplicates(dataset):
+    return dataset.drop_duplicates()
+
+# Function to count unique values for categorical columns
+def count_uniqueness(dataset, selected_column):
+    unique_counts = dataset[selected_column].value_counts()
+    return unique_counts
+
+# Function to create a horizontal line with custom styling
+def horizontal_line(height=1, color="blue", margin="0.5em 0"):
+    return f'<hr style="height: {height}px; margin: {margin}; background-color: {color};">'
+
+# Function to detect outliers using Z-score or IQR method (without removal)
+def detect_outliers(dataset, method, selected_column):
+    outliers_detected = None
+    
+    if method == 'Z-score':
+        z_scores = zscore(dataset[selected_column])
+        abs_z_scores = np.abs(z_scores)
+        outliers_detected = abs_z_scores > 3  # Z-score threshold = 3
+
+    elif method == 'IQR':
+        Q1 = dataset[selected_column].quantile(0.25)
+        Q3 = dataset[selected_column].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        outliers_detected = (dataset[selected_column] < lower_bound) | (dataset[selected_column] > upper_bound)
+
+    return outliers_detected
+
+# Function to remove outliers using Z-score or IQR method
+def remove_outliers(dataset, outliers_detected):
+    return dataset[~outliers_detected]
 
 # Load your dataset
 # Assume dataset is loaded here
 
-# Separator
-# st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
+# Initialize outliers_detected as None at the top
+outliers_detected = None
 
 # Data Quality Section in Sidebar
 st.sidebar.header('Data Quality')
 st.sidebar.header('1. Missing Value')
+
 # Allow the user to choose the method to view missing values
 view_option = st.sidebar.radio('Select View for Missing Values', 
                                 ['Total Null Values', 
@@ -367,6 +242,7 @@ if st.sidebar.button('Show Missing Values'):
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
 # New Section for Filling Missing Values
+st.sidebar.header('2. Fill Missing Value')
 if st.sidebar.button('Fill Missing Values'):
     original_shape = dataset.shape
     dataset = fill_missing_values(dataset)
@@ -381,9 +257,104 @@ if st.sidebar.button('Fill Missing Values'):
         mime='text/csv'
     )
 
+# Separator for Duplicates section
+st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
+
+# Section to Check for Duplicates
+st.sidebar.header('3. Duplicate Value')
+
+# Button to check for duplicate values
+if st.sidebar.button('Check for Duplicates'):
+    duplicate_count = check_duplicates(dataset)
+    st.write(f"Total Duplicated Rows: {duplicate_count}")
+
+# Option to remove duplicates
+if st.sidebar.button('Drop Duplicates'):
+    dataset = drop_duplicates(dataset)
+    st.write("Duplicate values have been removed.")
+
+    # Allow the user to download the dataset without duplicates
+    csv_data = convert_df_to_csv(dataset)
+    st.download_button(
+        label="Download Data without Duplicates as CSV",
+        data=csv_data,
+        file_name='cleaned_data_no_duplicates.csv',
+        mime='text/csv'
+    )
+
+# Separator for Uniqueness count section
+st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
+
+# Section for Counting Unique Values in Categorical Features
+st.sidebar.header('4. Unique Value Counts')
+
+# Dropdown to select categorical columns
+categorical_columns = dataset.select_dtypes(include=['object']).columns
+selected_column = st.sidebar.selectbox('Select Categorical Column to View Unique Values', categorical_columns)
+
+# Button to show unique values count for the selected column
+if st.sidebar.button('Show Unique Values Count'):
+    if selected_column:
+        unique_counts = count_uniqueness(dataset, selected_column)
+        st.write(f"Unique value counts for '{selected_column}':")
+        st.dataframe(unique_counts)
+
+# Separator for Outlier detection section
+st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
+
+# Section to Detect Outliers
+st.sidebar.header('5. Outlier Detection')
+
+# Dropdown to select numerical columns for outlier detection
+numerical_columns = dataset.select_dtypes(include=['number']).columns
+outlier_column = st.sidebar.selectbox('Select Numerical Column for Outlier Detection', numerical_columns)
+
+# Dropdown to select the method for outlier detection (radio box)
+outlier_method = st.sidebar.radio('Select Outlier Detection Method', ['Z-score', 'IQR'])
+
+# Button to detect outliers
+if st.sidebar.button('Detect Outliers'):
+    if outlier_column:
+        outliers_detected = detect_outliers(dataset, outlier_method, outlier_column)
+        st.write(f"Outliers detected in '{outlier_column}' using {outlier_method}: {outliers_detected.sum()} outliers.")
+        
+        # Display boxplot before outlier removal
+        st.write(f"Box Plot for '{outlier_column}' before outlier removal:")
+        fig, ax = plt.subplots()
+        sns.boxplot(x=dataset[outlier_column], ax=ax)
+        st.pyplot(fig)
+
+# Separator for Outlier removal section
+st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
+
+# Section to Remove Outliers
+st.sidebar.header('6. Outlier Removal')
+
+# Button to remove outliers
+if st.sidebar.button('Remove Outliers'):
+    if outlier_column and outliers_detected is not None:
+        original_shape = dataset.shape
+        dataset_cleaned = remove_outliers(dataset, outliers_detected)
+        st.write(f"Outliers removed from '{outlier_column}'. Original shape: {original_shape}, New shape: {dataset_cleaned.shape}")
+        
+        # Display boxplot after outlier removal
+        st.write(f"Box Plot for '{outlier_column}' after outlier removal:")
+        fig, ax = plt.subplots()
+        sns.boxplot(x=dataset_cleaned[outlier_column], ax=ax)
+        st.pyplot(fig)
+        
+        # Allow the user to download the dataset without outliers
+        csv_data = convert_df_to_csv(dataset_cleaned)
+        st.download_button(
+            label="Download Data without Outliers as CSV",
+            data=csv_data,
+            file_name='cleaned_data_no_outliers.csv',
+            mime='text/csv'
+        )
+
 # Final separator
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
-
 ####################### End of Code ############################
-    
+
+
