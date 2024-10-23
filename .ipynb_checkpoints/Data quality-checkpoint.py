@@ -320,13 +320,12 @@ if st.sidebar.button('Detect Outliers'):
         
         # Display boxplot before outlier removal
         st.write(f"Box Plot for '{outlier_column}' before outlier removal:")
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(6, 4))
         sns.boxplot(x=dataset[outlier_column], ax=ax)
         st.pyplot(fig)
 
 # Separator for Outlier removal section
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
-
 
 # Section to Remove Outliers
 st.sidebar.header('6. Outlier Removal')
@@ -350,7 +349,7 @@ if st.sidebar.button('Remove Outliers'):
 
         dataset_cleaned = remove_outliers(dataset, outliers_detected)
         st.write(f"Outliers removed from '{outlier_column}' using {removal_method}. Original shape: {original_shape}, New shape: {dataset_cleaned.shape}")
-        
+
         # Display boxplot before outlier removal
         st.write(f"Box Plot for '{outlier_column}' before outlier removal:")
         fig_before, ax_before = plt.subplots(figsize=(6, 4))
@@ -373,8 +372,6 @@ if st.sidebar.button('Remove Outliers'):
             file_name='cleaned_data_no_outliers.csv',
             mime='text/csv'
         )
-
-
 
 # Final separator
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
