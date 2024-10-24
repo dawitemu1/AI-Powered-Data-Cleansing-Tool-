@@ -1,7 +1,7 @@
 # AI Powered Data Quality Tool/ Data anotation Tool
 we use Both back and fron using Python, mostly Used Library such As streamlit, Gradio, Dash
 what we can do the following 
-### Data profling
+### Data profling using
   - datetype
   - Mean
   - Medain
@@ -9,7 +9,7 @@ what we can do the following
   - Max
   - STD
   - Range
-### Missing Value detectiong Uisng
+### Missing Value detectiong Using
   - Total Null values in dataset
   - Total null values Per column or table
   - Total null value by Precentage
@@ -19,7 +19,7 @@ what we can do the following
 ###  Missing Value Removal
   - FOr Catagorical Feature : Mode
   - For Numerical Feature: KNN
-### Oulier Detection and removal
+### Oulier Detection and removal using 
   - IQR
   - Z-score
 ###  Duplication/redundacy Detection and removal for numerical feature
