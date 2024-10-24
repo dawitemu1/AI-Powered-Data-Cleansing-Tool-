@@ -176,6 +176,15 @@ def display_missing_values(dataset, view_option):
         msno.bar(dataset, ax=ax)  # Pass the axis to msno.bar()
         st.pyplot(fig)
 
+    elif view_option == 'Total Nulls by Row':
+        nulls_by_row = dataset.isnull().sum(axis=1)
+        st.write('Total Nulls by Row:')
+        st.dataframe(nulls_by_row[nulls_by_row > 0])  # Display only rows with nulls
+
+    elif view_option == 'Each Missed Value by Row and Column':
+        st.write('Missing Values by Row and Column:')
+        st.dataframe(dataset[dataset.isnull().any(axis=1)])  # Display rows with any missing values
+
 # Function to check for duplicates
 def check_duplicates(dataset):
     duplicates_count = dataset.duplicated().sum()
@@ -275,7 +284,9 @@ view_option = st.sidebar.radio('Select View for Missing Values',
                                 ['Total Null Values', 
                                  'Total Nulls by Table', 
                                  'Total Nulls by Percentage', 
-                                 'Bar Graph of Missing Values'])
+                                 'Bar Graph of Missing Values', 
+                                 'Total Nulls by Row', 
+                                 'Each Missed Value by Row and Column'])
 
 # Button to display missing values based on selected option
 if st.sidebar.button('Show Missing Values'):
