@@ -150,7 +150,25 @@ def fill_missing_values(dataset):
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# Function to display missing values
+# Function to display 'Null' in red where there are missing values
+def highlight_missing(val):
+    if pd.isnull(val):
+        return 'background-color: red; color: white; text-align: center;', 'Null'  # Set red background and white text for 'Null'
+    else:
+        return '', val  # No styling for non-missing values
+
+
+# Set the Pandas Styler max_elements option to allow rendering of larger dataframes
+pd.set_option("styler.render.max_elements", 5001720)  # Adjust this based on the dataset size
+
+# Function to apply red color styling to 'Null' values
+def highlight_missing(val):
+    if val == 'Null':  # Check if the cell value is 'Null'
+        return 'color: red;'  # Apply red color to 'Null' text
+    else:
+        return ''  # No style for other values
+
+# Modified display for 'Each Missed Value by Row and Column'
 @st.cache_data
 def display_missing_values(dataset, view_option):
     if view_option == 'Total Null Values':
@@ -182,8 +200,13 @@ def display_missing_values(dataset, view_option):
         st.dataframe(nulls_by_row[nulls_by_row > 0])  # Display only rows with nulls
 
     elif view_option == 'Each Missed Value by Row and Column':
-        st.write('Missing Values by Row and Column:')
-        st.dataframe(dataset[dataset.isnull().any(axis=1)])  # Display rows with any missing values
+        st.write('Missing Values by Row and Column (Red Highlight for Nulls):')
+        styled_data = dataset.copy()  # Work with a copy to avoid modifying the original data
+        styled_data = styled_data.applymap(lambda x: 'Null' if pd.isnull(x) else x)  # Replace NaN with 'Null'
+        styled_data = styled_data.style.applymap(highlight_missing)  # Apply the style for 'Null'
+        st.dataframe(styled_data)
+
+
 
 # Function to check for duplicates
 def check_duplicates(dataset):
