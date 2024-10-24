@@ -381,36 +381,45 @@ if st.sidebar.button('Detect Outliers'):
 # Separator for Outlier removal section
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
-# Section to Remove Outliers
+# Sidebar settings for Streamlit
 st.sidebar.header('6. Outlier Removal')
 
 # Dropdown to select numerical columns for outlier detection
+numerical_columns = dataset.select_dtypes(include=np.number).columns.tolist()
 outlier_column = st.sidebar.selectbox('Select Numerical Column for Outlier Removal', numerical_columns)
 
 # Add a radio box for the method of outlier removal
 outlier_method_removal = st.sidebar.radio('Select Outlier Removal Method', ['Z-score', 'IQR'])
 
+# Initialize outliers_detected as None
+outliers_detected = None
+
 # Button to remove outliers
 if st.sidebar.button('Remove Outliers'):
-    if outliers_detected is not None:
-        dataset = remove_outliers(dataset, outliers_detected)
-        st.write(f"Outliers removed. New dataset shape: {dataset.shape}")
+    # Detect outliers first
+    if outlier_column:
+        outliers_detected = detect_outliers(dataset, outlier_method_removal, outlier_column)
+        
+        if outliers_detected is not None:
+            dataset_cleaned = remove_outliers(dataset, outliers_detected)
+            st.write(f"Outliers removed. New dataset shape: {dataset_cleaned.shape}")
 
-        # Display boxplot after outlier removal
-        st.write(f"Box Plot for '{outlier_column}' after outlier removal:")
-        fig, ax = plt.subplots(figsize=(6, 4))
-        sns.boxplot(x=dataset[outlier_column], ax=ax)
-        st.pyplot(fig)
+            # Display boxplot after outlier removal
+            st.write(f"Box Plot for '{outlier_column}' after outlier removal:")
+            fig, ax = plt.subplots(figsize=(6, 4))
+            sns.boxplot(x=dataset_cleaned[outlier_column], ax=ax)
+            st.pyplot(fig)
 
-        # Allow the user to download the dataset without outliers
-        csv_data = convert_df_to_csv(dataset)
-        st.download_button(
-            label="Download Data without Outliers as CSV",
-            data=csv_data,
-            file_name='cleaned_data_no_outliers.csv',
-            mime='text/csv'
-        )
-
+            # Allow the user to download the dataset without outliers
+            csv_data = convert_df_to_csv(dataset_cleaned)
+            st.download_button(
+                label="Download Data without Outliers as CSV",
+                data=csv_data,
+                file_name='cleaned_data_no_outliers.csv',
+                mime='text/csv'
+            )
+        else:
+            st.write("No outliers detected.")
 # Final separator
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
