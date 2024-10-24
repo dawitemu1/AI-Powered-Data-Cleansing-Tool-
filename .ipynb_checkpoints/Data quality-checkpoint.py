@@ -63,9 +63,6 @@ st.markdown(
 def load_data(file_path):
     return pd.read_excel(file_path)
 
-
-
-
 # Load cleaned data
 def load_data(file):
     if isinstance(file, str):  # If the input is a string path
@@ -255,6 +252,26 @@ def remove_outliers(dataset, outliers_detected):
 # Initialize outliers_detected as None at the top
 outliers_detected = None
 
+# Function to check for inconsistent date formats
+def check_inconsistent_dates(dataset):
+    inconsistent_dates = {}
+    for col in dataset.columns:
+        if pd.api.types.is_datetime64_any_dtype(dataset[col]):
+            # Check for different date formats
+            unique_dates = dataset[col].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else None).unique()
+            inconsistent_dates[col] = unique_dates
+    return inconsistent_dates
+
+# Function to check for inconsistent capitalizations in categorical columns
+def check_inconsistent_categoricals(dataset):
+    inconsistent_categories = {}
+    categorical_cols = dataset.select_dtypes(include=['object']).columns
+    for col in categorical_cols:
+        # Find unique values with different capitalizations
+        lower_values = dataset[col].str.lower().unique()
+        inconsistent_categories[col] = lower_values
+    return inconsistent_categories
+
 # Data Quality Section in Sidebar
 st.sidebar.header('Data Quality Metrix')
 # Separator for Data Overview section
@@ -443,6 +460,27 @@ if st.sidebar.button('Remove Outliers'):
             )
         else:
             st.write("No outliers detected.")
+#  separator
+st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
+
+# Section for Data Inconsistency
+st.sidebar.header('7. Data Inconsistency')
+
+# Button to check for inconsistent date formats
+if st.sidebar.button('Check Date Inconsistency'):
+    inconsistent_dates = check_inconsistent_dates(dataset)
+    st.write('Inconsistent Date Formats:')
+    for col, unique_formats in inconsistent_dates.items():
+        if len(unique_formats) > 1:  # Show columns with more than one unique date format
+            st.write(f"Column: {col}, Unique Date Formats: {unique_formats}")
+
+# Button to check for inconsistent capitalizations in categorical columns
+if st.sidebar.button('Check Categorical Inconsistency'):
+    inconsistent_categoricals = check_inconsistent_categoricals(dataset)
+    st.write('Inconsistent Capitalizations in Categorical Columns:')
+    for col, unique_vals in inconsistent_categoricals.items():
+        if len(unique_vals) > 1:  # Show columns with inconsistencies
+            st.write(f"Column: {col}, Unique Values (Case-Insensitive): {unique_vals}")
 # Final separator
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
