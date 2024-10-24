@@ -224,7 +224,50 @@ def remove_outliers(dataset, outliers_detected):
 outliers_detected = None
 
 # Data Quality Section in Sidebar
-st.sidebar.header('Data Quality')
+st.sidebar.header('Data Quality Metrix')
+# Separator for Data Overview section
+st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
+
+# Section for Data Overview (Datatype, Mean, Median, Standard Deviation)
+st.sidebar.header('0. Data Profile')
+
+# Function to convert columns to datetime if they represent dates or times
+def convert_to_datetime(dataset):
+    for col in dataset.columns:
+        # Attempt to convert the column to datetime
+        temp = pd.to_datetime(dataset[col], errors='coerce')
+        # Check if conversion resulted in all NaT or if the original column has valid dates
+        if temp.notna().any() and dataset[col].dtype == 'object':
+            dataset[col] = temp  # Only update if it's a date/time column
+    return dataset
+
+# Conver date columns before displaying the data profile
+dataset = convert_to_datetime(dataset)
+
+# Button to show data types, mean, median, standard deviation, min, max, and range
+if st.sidebar.button('Data Profile'):
+    # Calculate range (max - min)
+    range_values = dataset.max(numeric_only=True) - dataset.min(numeric_only=True)
+
+    # Create DataFrame for Data Overview
+    data_info = pd.DataFrame({
+        'Datatype': dataset.dtypes,
+        'Mean': dataset.mean(numeric_only=True),
+        'Median': dataset.median(numeric_only=True),
+        'Std Deviation': dataset.std(numeric_only=True),
+        'Min': dataset.min(numeric_only=True),
+        'Max': dataset.max(numeric_only=True),
+        'Range': range_values
+    })
+    
+    # Display the data overview table
+    st.write("Data Profile (Datatype, Mean, Median, Std Deviation, Min, Max, Range):")
+    st.dataframe(data_info)
+
+# Separator before "1. Missing Value"
+st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
+
+# Section for Missing Values
 st.sidebar.header('1. Missing Value')
 
 # Allow the user to choose the method to view missing values
@@ -334,38 +377,22 @@ st.sidebar.header('6. Outlier Removal')
 outlier_column = st.sidebar.selectbox('Select Numerical Column for Outlier Removal', numerical_columns)
 
 # Add a radio box for the method of outlier removal
-removal_method = st.sidebar.radio('Select Outlier Removal Method', ['Z-score', 'IQR'])
+outlier_method_removal = st.sidebar.radio('Select Outlier Removal Method', ['Z-score', 'IQR'])
 
 # Button to remove outliers
 if st.sidebar.button('Remove Outliers'):
-    if outlier_column and outliers_detected is not None:
-        original_shape = dataset.shape
-
-        # Remove outliers based on the selected method
-        if removal_method == 'Z-score':
-            outliers_detected = detect_outliers(dataset, 'Z-score', outlier_column)
-        elif removal_method == 'IQR':
-            outliers_detected = detect_outliers(dataset, 'IQR', outlier_column)
-
-        dataset_cleaned = remove_outliers(dataset, outliers_detected)
-        st.write(f"Outliers removed from '{outlier_column}' using {removal_method}. Original shape: {original_shape}, New shape: {dataset_cleaned.shape}")
-
-        # Display boxplot before outlier removal
-        st.write(f"Box Plot for '{outlier_column}' before outlier removal:")
-        fig_before, ax_before = plt.subplots(figsize=(6, 4))
-        sns.boxplot(x=dataset[outlier_column], ax=ax_before)
-        ax_before.set_title(f'Before Outlier Removal ({removal_method})')
-        st.pyplot(fig_before)
+    if outliers_detected is not None:
+        dataset = remove_outliers(dataset, outliers_detected)
+        st.write(f"Outliers removed. New dataset shape: {dataset.shape}")
 
         # Display boxplot after outlier removal
         st.write(f"Box Plot for '{outlier_column}' after outlier removal:")
-        fig_after, ax_after = plt.subplots(figsize=(6, 4))
-        sns.boxplot(x=dataset_cleaned[outlier_column], ax=ax_after)
-        ax_after.set_title(f'After Outlier Removal ({removal_method})')
-        st.pyplot(fig_after)
-        
+        fig, ax = plt.subplots(figsize=(6, 4))
+        sns.boxplot(x=dataset[outlier_column], ax=ax)
+        st.pyplot(fig)
+
         # Allow the user to download the dataset without outliers
-        csv_data = convert_df_to_csv(dataset_cleaned)
+        csv_data = convert_df_to_csv(dataset)
         st.download_button(
             label="Download Data without Outliers as CSV",
             data=csv_data,
