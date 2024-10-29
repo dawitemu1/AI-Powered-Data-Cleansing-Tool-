@@ -7,6 +7,7 @@ from scipy.stats import pearsonr
 from io import BytesIO
 import calendar  # To get month names
 from io import StringIO
+from sklearn.impute import KNNImputer
 
 # Configuring the page with Title, icon, and layout
 st.set_page_config(
@@ -31,7 +32,7 @@ custom_css = """
 # st.markdown(custom_css, unsafe_allow_html=True)
 # st.image("logo.jpg", width=400)  # Change "logo.png" to the path of your logo image file
 # # Setting the title with Markdown and center-aligning
-st.markdown('<h1 style="text-align: center;">AI Powered Data Quality Tool </h1>', unsafe_allow_html=True)
+st.markdown('<h1 style="text-align: center;">AI Powered Data Cleansing Tool </h1>', unsafe_allow_html=True)
 
 # Defining background color
 st.markdown(
@@ -128,33 +129,68 @@ from scipy.stats import zscore
 import numpy as np
 import seaborn as sns
 
-# Function to fill missing values
-def fill_missing_values(dataset):
-    # Fill categorical features using mode
-    categorical_cols = dataset.select_dtypes(include=['object']).columns
-    for col in categorical_cols:
-        dataset[col].fillna(dataset[col].mode()[0], inplace=True)
 
-    # Fill numerical features using KNN
+# Function to fill missing values with various options
+def fill_missing_values(dataset, fill_options):
+    # Fill categorical features
+    categorical_cols = dataset.select_dtypes(include=['object']).columns
+    if fill_options.get("all_categorical"):
+        method = fill_options["all_categorical"]
+
+        for col in categorical_cols:
+            if method == 'mode':
+                dataset[col].fillna(dataset[col].mode()[0], inplace=True)
+            elif method == 'constant':
+                constant_val = st.sidebar.text_input(f"Enter constant value for all categorical features", value="Unknown")
+                dataset[col].fillna(constant_val, inplace=True)
+            elif method == 'ffill':
+                dataset[col].fillna(method='ffill', inplace=True)
+            elif method == 'bfill':
+                dataset[col].fillna(method='bfill', inplace=True)
+    else:
+        for col in categorical_cols:
+            method = fill_options.get(col)
+            if method == 'mode':
+                dataset[col].fillna(dataset[col].mode()[0], inplace=True)
+            elif method == 'constant':
+                constant_val = st.sidebar.text_input(f"Enter constant value for {col}", value="Unknown")
+                dataset[col].fillna(constant_val, inplace=True)
+            elif method == 'ffill':
+                dataset[col].fillna(method='ffill', inplace=True)
+            elif method == 'bfill':
+                dataset[col].fillna(method='bfill', inplace=True)
+
+    # Fill numerical features
     numerical_cols = dataset.select_dtypes(include=['number']).columns
     if len(numerical_cols) > 0:
-        imputer = KNNImputer(n_neighbors=5)
-        dataset[numerical_cols] = imputer.fit_transform(dataset[numerical_cols])
-
+        if fill_options.get("numerical") == 'KNN':
+            imputer = KNNImputer(n_neighbors=5)
+            dataset[numerical_cols] = imputer.fit_transform(dataset[numerical_cols])
+        else:
+            for col in numerical_cols:
+                method = fill_options.get(col)
+                if method == 'mean':
+                    dataset[col].fillna(dataset[col].mean(), inplace=True)
+                elif method == 'median':
+                    dataset[col].fillna(dataset[col].median(), inplace=True)
+                elif method == 'mode':
+                    dataset[col].fillna(dataset[col].mode()[0], inplace=True)
+                elif method == 'constant':
+                    constant_val = st.sidebar.number_input(f"Enter constant value for {col}", value=0.0)
+                    dataset[col].fillna(constant_val, inplace=True)
+                elif method == 'ffill':
+                    dataset[col].fillna(method='ffill', inplace=True)
+                elif method == 'bfill':
+                    dataset[col].fillna(method='bfill', inplace=True)
     return dataset
 
 # Function to create a downloadable CSV
 def convert_df_to_csv(df):
     return df.to_csv(index=False).encode('utf-8')
 
-# Function to display 'Null' in red where there are missing values
-def highlight_missing(val):
-    if pd.isnull(val):
-        return 'background-color: red; color: white; text-align: center;', 'Null'  # Set red background and white text for 'Null'
-    else:
-        return '', val  # No styling for non-missing values
 
-
+    
+    
 # Set the Pandas Styler max_elements option to allow rendering of larger dataframes
 pd.set_option("styler.render.max_elements", 5001720)  # Adjust this based on the dataset size
 
@@ -198,17 +234,39 @@ def display_missing_values(dataset, view_option):
 
     elif view_option == 'Each Missed Value by Row and Column':
         st.write('Missing Values by Row and Column (Red Highlight for Nulls):')
-        styled_data = dataset.copy()  # Work with a copy to avoid modifying the original data
-        styled_data = styled_data.applymap(lambda x: 'Null' if pd.isnull(x) else x)  # Replace NaN with 'Null'
+        
+        # Filter rows and columns to include only those with at least one null value
+        filtered_data = dataset.loc[dataset.isnull().any(axis=1), dataset.isnull().any()]  
+        
+        # Replace NaN with 'Null' and apply style
+        styled_data = filtered_data.applymap(lambda x: 'Null' if pd.isnull(x) else x)  # Replace NaN with 'Null'
         styled_data = styled_data.style.applymap(highlight_missing)  # Apply the style for 'Null'
         st.dataframe(styled_data)
 
 
+# Function to check for duplicates based on selected type
+def check_duplicates(dataset, selected_type):
+    if selected_type == 'Credit':
+        subset = ['CONTRACT_CODE', 'CUST_SHORTNAME', 'DAO_NAME']
+    elif selected_type == 'Digital':
+        subset = ['CUSTOMER_CODE', 'CUST_MOTHER', 'NAME_1']
+    elif selected_type == 'CBEBIRR':
+        subset = ['PHONE_NUMBER', 'PERSON_ID', 'FIRST_NAME', 'SECOND_NAME', 'LAST_NAME', 'MOTHERS_FIRST_NAME', 'CUSTOMER_ID']
+    elif selected_type == 'FCY':
+        subset = ['RECID', 'CUSTOMER_NAME', 'CUSTOMER_ID']
+    else:
+        return pd.DataFrame()  # Return an empty DataFrame if the type is invalid
 
-# Function to check for duplicates
-def check_duplicates(dataset):
-    duplicates_count = dataset.duplicated().sum()
-    return duplicates_count
+    # Create a combined column by joining values with " & "
+    dataset['combined'] = dataset[subset].astype(str).agg(' & '.join, axis=1)
+
+    # Get duplicated rows based on the combined column
+    duplicates = dataset[dataset.duplicated(subset='combined', keep=False)]  # Keep all duplicates
+
+    # Optionally, remove the combined column
+    dataset.drop(columns=['combined'], inplace=True)
+
+    return duplicates
 
 # Function to drop duplicates
 def drop_duplicates(dataset):
@@ -319,6 +377,7 @@ st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 # Section for Missing Values
 st.sidebar.header('1. Missing Value')
 
+
 # Allow the user to choose the method to view missing values
 view_option = st.sidebar.radio('Select View for Missing Values', 
                                 ['Total Null Values', 
@@ -335,32 +394,83 @@ if st.sidebar.button('Show Missing Values'):
 # Separator for Fill Missing Values section
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
-# New Section for Filling Missing Values
-st.sidebar.header('2. Fill Missing Value')
-if st.sidebar.button('Fill Missing Values'):
-    original_shape = dataset.shape
-    dataset = fill_missing_values(dataset)
-    st.write(f"Missing values filled. Original shape: {original_shape}, New shape: {dataset.shape}")
+st.sidebar.header("2. Fill Missing Values")
 
-    # Allow the user to download the processed data
-    csv_data = convert_df_to_csv(dataset)
-    st.download_button(
-        label="Download Processed Data as CSV",
-        data=csv_data,
-        file_name='processed_data.csv',
-        mime='text/csv'
-    )
+# Ensure the dataset is loaded
+if dataset is not None and not dataset.empty:
+    # Get column types from the uploaded dataset
+    categorical_cols = dataset.select_dtypes(include=['object']).columns
+    numerical_cols = dataset.select_dtypes(include=['number']).columns
 
+    fill_options = {}
+
+    # Categorical features fill options
+    st.sidebar.subheader("Categorical Features")
+    fill_all_categorical = st.sidebar.checkbox("Apply method to all categorical features")
+    if fill_all_categorical:
+        selected_method_categorical = st.sidebar.selectbox("Select fill method for all categorical features", 
+                                                           options=["mode", "constant", "ffill", "bfill"], 
+                                                           index=0)
+        fill_options["all_categorical"] = selected_method_categorical
+    else:
+        for col in categorical_cols:
+            selected_method = st.sidebar.selectbox(f"Select fill method for {col}", 
+                                                   options=["mode", "constant", "ffill", "bfill"], 
+                                                   index=0)
+            fill_options[col] = selected_method
+
+    # Numerical features fill options
+    st.sidebar.subheader("Numerical Features")
+    fill_all_numerical = st.sidebar.checkbox("Apply method to all numerical features")
+    if fill_all_numerical:
+        selected_method_numerical = st.sidebar.selectbox("Select fill method for all numerical features", 
+                                                         options=["mean", "median", "mode", "constant", "ffill", "bfill", "KNN"], 
+                                                         index=0)
+        fill_options["all_numerical"] = selected_method_numerical
+    else:
+        for col in numerical_cols:
+            selected_method = st.sidebar.selectbox(f"Select fill method for {col}", 
+                                                   options=["mean", "median", "mode", "constant", "ffill", "bfill", "KNN"], 
+                                                   index=0)
+            fill_options[col] = selected_method
+
+    # Apply fill method if button is clicked
+    if st.sidebar.button("Fill Missing Values"):
+        original_shape = dataset.shape
+        dataset = fill_missing_values(dataset, fill_options)
+        st.write(f"Missing values filled. Original shape: {original_shape}, New shape: {dataset.shape}")
+
+        # Allow the user to download the processed data
+        csv_data = convert_df_to_csv(dataset)
+        st.download_button(
+            label="Download Processed Data as CSV",
+            data=csv_data,
+            file_name='processed_data.csv',
+            mime='text/csv'
+        )
+else:
+    st.write("No data available. Please upload a valid dataset.")
 # Separator for Duplicates section
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
 # Section to Check for Duplicates
 st.sidebar.header('3. Duplicate Value')
 
+# Dropdown to select the type of check
+selected_type = st.sidebar.selectbox('Select Type to Check for Duplicates', ['Credit', 'Digital', 'CBEBIRR', 'FCY'])
+
 # Button to check for duplicate values
 if st.sidebar.button('Check for Duplicates'):
-    duplicate_count = check_duplicates(dataset)
-    st.write(f"Total Duplicated Rows: {duplicate_count}")
+    if dataset is not None and not dataset.empty:
+        duplicates_df = check_duplicates(dataset, selected_type)
+        duplicate_count = duplicates_df.shape[0]  # Count the number of duplicated rows
+        if duplicate_count > 0:
+            st.write(f"Total Duplicated Rows for {selected_type}: {duplicate_count}")
+            st.dataframe(duplicates_df)  # Display the duplicated rows
+        else:
+            st.write("No duplicated rows found.")
+    else:
+        st.write("No data available. Please upload a valid dataset.")
 
 # Option to remove duplicates
 if st.sidebar.button('Drop Duplicates'):
