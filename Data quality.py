@@ -130,30 +130,30 @@ import numpy as np
 import seaborn as sns
 
 
+
 # Function to fill missing values with various options
 def fill_missing_values(dataset, fill_options):
     # Fill categorical features
     categorical_cols = dataset.select_dtypes(include=['object']).columns
     if fill_options.get("all_categorical"):
         method = fill_options["all_categorical"]
-
         for col in categorical_cols:
             if method == 'mode':
                 dataset[col].fillna(dataset[col].mode()[0], inplace=True)
             elif method == 'constant':
-                constant_val = st.sidebar.text_input(f"Enter constant value for all categorical features", value="Unknown")
+                constant_val = fill_options.get("constant_value_categorical", "Unknown")
                 dataset[col].fillna(constant_val, inplace=True)
             elif method == 'ffill':
                 dataset[col].fillna(method='ffill', inplace=True)
             elif method == 'bfill':
                 dataset[col].fillna(method='bfill', inplace=True)
     else:
-        for col in categorical_cols:
+        for col in fill_options.get("selected_categorical", []):
             method = fill_options.get(col)
             if method == 'mode':
                 dataset[col].fillna(dataset[col].mode()[0], inplace=True)
             elif method == 'constant':
-                constant_val = st.sidebar.text_input(f"Enter constant value for {col}", value="Unknown")
+                constant_val = fill_options.get(f"constant_value_{col}", "Unknown")
                 dataset[col].fillna(constant_val, inplace=True)
             elif method == 'ffill':
                 dataset[col].fillna(method='ffill', inplace=True)
@@ -162,13 +162,13 @@ def fill_missing_values(dataset, fill_options):
 
     # Fill numerical features
     numerical_cols = dataset.select_dtypes(include=['number']).columns
-    if len(numerical_cols) > 0:
-        if fill_options.get("numerical") == 'KNN':
+    if fill_options.get("all_numerical"):
+        if fill_options["all_numerical"] == 'KNN':
             imputer = KNNImputer(n_neighbors=5)
             dataset[numerical_cols] = imputer.fit_transform(dataset[numerical_cols])
         else:
+            method = fill_options["all_numerical"]
             for col in numerical_cols:
-                method = fill_options.get(col)
                 if method == 'mean':
                     dataset[col].fillna(dataset[col].mean(), inplace=True)
                 elif method == 'median':
@@ -176,12 +176,29 @@ def fill_missing_values(dataset, fill_options):
                 elif method == 'mode':
                     dataset[col].fillna(dataset[col].mode()[0], inplace=True)
                 elif method == 'constant':
-                    constant_val = st.sidebar.number_input(f"Enter constant value for {col}", value=0.0)
+                    constant_val = fill_options.get("constant_value_numerical", 0.0)
                     dataset[col].fillna(constant_val, inplace=True)
                 elif method == 'ffill':
                     dataset[col].fillna(method='ffill', inplace=True)
                 elif method == 'bfill':
                     dataset[col].fillna(method='bfill', inplace=True)
+    else:
+        for col in fill_options.get("selected_numerical", []):
+            method = fill_options.get(col)
+            if method == 'mean':
+                dataset[col].fillna(dataset[col].mean(), inplace=True)
+            elif method == 'median':
+                dataset[col].fillna(dataset[col].median(), inplace=True)
+            elif method == 'mode':
+                dataset[col].fillna(dataset[col].mode()[0], inplace=True)
+            elif method == 'constant':
+                constant_val = fill_options.get(f"constant_value_{col}", 0.0)
+                dataset[col].fillna(constant_val, inplace=True)
+            elif method == 'ffill':
+                dataset[col].fillna(method='ffill', inplace=True)
+            elif method == 'bfill':
+                dataset[col].fillna(method='bfill', inplace=True)
+
     return dataset
 
 # Function to create a downloadable CSV
@@ -368,10 +385,6 @@ if st.sidebar.button('Data Profile'):
 # Separator before "1. Missing Value"
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
-# Section for Missing Values
-st.sidebar.header('1. Missing Value')
-
-
 # Display all features with checkboxes
 st.sidebar.write("Select Features to Include in Missing Values Analysis")
 selected_features = st.sidebar.multiselect("Features", options=dataset.columns, default=[])
@@ -398,8 +411,7 @@ st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 st.sidebar.header("2. Fill Missing Values")
 
 # Ensure the dataset is loaded
-if dataset is not None and not dataset.empty:
-    # Get column types from the uploaded dataset
+if 'dataset' in locals() and not dataset.empty:
     categorical_cols = dataset.select_dtypes(include=['object']).columns
     numerical_cols = dataset.select_dtypes(include=['number']).columns
 
@@ -413,12 +425,18 @@ if dataset is not None and not dataset.empty:
                                                            options=["mode", "constant", "ffill", "bfill"], 
                                                            index=0)
         fill_options["all_categorical"] = selected_method_categorical
+        if selected_method_categorical == 'constant':
+            fill_options["constant_value_categorical"] = st.sidebar.text_input("Enter constant value for all categorical features", value="Unknown")
     else:
-        for col in categorical_cols:
+        selected_categorical_features = st.sidebar.multiselect("Select categorical features", options=categorical_cols)
+        fill_options["selected_categorical"] = selected_categorical_features
+        for col in selected_categorical_features:
             selected_method = st.sidebar.selectbox(f"Select fill method for {col}", 
                                                    options=["mode", "constant", "ffill", "bfill"], 
                                                    index=0)
             fill_options[col] = selected_method
+            if selected_method == 'constant':
+                fill_options[f"constant_value_{col}"] = st.sidebar.text_input(f"Enter constant value for {col}", value="Unknown")
 
     # Numerical features fill options
     st.sidebar.subheader("Numerical Features")
@@ -428,12 +446,18 @@ if dataset is not None and not dataset.empty:
                                                          options=["mean", "median", "mode", "constant", "ffill", "bfill", "KNN"], 
                                                          index=0)
         fill_options["all_numerical"] = selected_method_numerical
+        if selected_method_numerical == 'constant':
+            fill_options["constant_value_numerical"] = st.sidebar.number_input("Enter constant value for all numerical features", value=0.0)
     else:
-        for col in numerical_cols:
+        selected_numerical_features = st.sidebar.multiselect("Select numerical features", options=numerical_cols)
+        fill_options["selected_numerical"] = selected_numerical_features
+        for col in selected_numerical_features:
             selected_method = st.sidebar.selectbox(f"Select fill method for {col}", 
                                                    options=["mean", "median", "mode", "constant", "ffill", "bfill", "KNN"], 
                                                    index=0)
             fill_options[col] = selected_method
+            if selected_method == 'constant':
+                fill_options[f"constant_value_{col}"] = st.sidebar.number_input(f"Enter constant value for {col}", value=0.0)
 
     # Apply fill method if button is clicked
     if st.sidebar.button("Fill Missing Values"):
