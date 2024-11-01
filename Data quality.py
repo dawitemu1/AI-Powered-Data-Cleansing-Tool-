@@ -196,51 +196,45 @@ pd.set_option("styler.render.max_elements", 5001720)  # Adjust this based on the
 
 # Function to apply red color styling to 'Null' values
 def highlight_missing(val):
-    if val == 'Null':  # Check if the cell value is 'Null'
-        return 'color: red;'  # Apply red color to 'Null' text
-    else:
-        return ''  # No style for other values
+    return 'color: red;' if val == 'Null' else ''
 
-# Modified display for 'Each Missed Value by Row and Column'
+# Function to display missing values based on the selected option
 @st.cache_data
-def display_missing_values(dataset, view_option):
+def display_missing_values(dataset, selected_features, view_option):
+    selected_data = dataset[selected_features]  # Filter data to include only selected features
+    
     if view_option == 'Total Null Values':
-        total_nulls = dataset.isnull().sum().sum()
-        st.write(f'Total Null Values in the dataset: {total_nulls}')
+        total_nulls = selected_data.isnull().sum().sum()
+        st.write(f'Total Null Values in the selected features: {total_nulls}')
         
     elif view_option == 'Total Nulls by Table':
-        nulls_by_column = dataset.isnull().sum()
+        nulls_by_column = selected_data.isnull().sum()
         nulls_table = pd.DataFrame(nulls_by_column, columns=['Total Nulls'])
-        nulls_table['Percentage'] = (nulls_table['Total Nulls'] / len(dataset)) * 100
+        nulls_table['Percentage'] = (nulls_table['Total Nulls'] / len(selected_data)) * 100
         st.write('Total Nulls by Column:')
         st.dataframe(nulls_table[nulls_table['Total Nulls'] > 0])  # Display only columns with nulls
 
     elif view_option == 'Total Nulls by Percentage':
-        nulls_percentage = (dataset.isnull().sum() / len(dataset)) * 100
+        nulls_percentage = (selected_data.isnull().sum() / len(selected_data)) * 100
         nulls_percentage_df = pd.DataFrame(nulls_percentage, columns=['Percentage Nulls'])
         st.write('Percentage of Nulls by Column:')
         st.dataframe(nulls_percentage_df)  # Show all columns with their percentages
 
     elif view_option == 'Bar Graph of Missing Values':
         st.write('Bar Graph of Missing Values by Feature:')
-        fig, ax = plt.subplots(figsize=(10, 6))  # Create a new figure
-        msno.bar(dataset, ax=ax)  # Pass the axis to msno.bar()
+        fig, ax = plt.subplots(figsize=(10, 6))
+        msno.bar(selected_data, ax=ax)
         st.pyplot(fig)
 
     elif view_option == 'Total Nulls by Row':
-        nulls_by_row = dataset.isnull().sum(axis=1)
+        nulls_by_row = selected_data.isnull().sum(axis=1)
         st.write('Total Nulls by Row:')
         st.dataframe(nulls_by_row[nulls_by_row > 0])  # Display only rows with nulls
 
     elif view_option == 'Each Missed Value by Row and Column':
         st.write('Missing Values by Row and Column (Red Highlight for Nulls):')
-        
-        # Filter rows and columns to include only those with at least one null value
-        filtered_data = dataset.loc[dataset.isnull().any(axis=1), dataset.isnull().any()]  
-        
-        # Replace NaN with 'Null' and apply style
-        styled_data = filtered_data.applymap(lambda x: 'Null' if pd.isnull(x) else x)  # Replace NaN with 'Null'
-        styled_data = styled_data.style.applymap(highlight_missing)  # Apply the style for 'Null'
+        filtered_data = selected_data.loc[selected_data.isnull().any(axis=1), selected_data.isnull().any()]
+        styled_data = filtered_data.applymap(lambda x: 'Null' if pd.isnull(x) else x).style.applymap(highlight_missing)
         st.dataframe(styled_data)
 
 
@@ -378,18 +372,25 @@ st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 st.sidebar.header('1. Missing Value')
 
 
+# Display all features with checkboxes
+st.sidebar.write("Select Features to Include in Missing Values Analysis")
+selected_features = st.sidebar.multiselect("Features", options=dataset.columns, default=[])
+
 # Allow the user to choose the method to view missing values
 view_option = st.sidebar.radio('Select View for Missing Values', 
-                                ['Total Null Values', 
-                                 'Total Nulls by Table', 
-                                 'Total Nulls by Percentage', 
-                                 'Bar Graph of Missing Values', 
-                                 'Total Nulls by Row', 
-                                 'Each Missed Value by Row and Column'])
+                               ['Total Null Values', 
+                                'Total Nulls by Table', 
+                                'Total Nulls by Percentage', 
+                                'Bar Graph of Missing Values', 
+                                'Total Nulls by Row', 
+                                'Each Missed Value by Row and Column'])
 
 # Button to display missing values based on selected option
 if st.sidebar.button('Show Missing Values'):
-    display_missing_values(dataset, view_option)
+    if selected_features:  # Check if any features are selected
+        display_missing_values(dataset, selected_features, view_option)
+    else:
+        st.warning("Please select at least one feature to analyze missing values.")
 
 # Separator for Fill Missing Values section
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
