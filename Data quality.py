@@ -8,7 +8,7 @@ from io import BytesIO
 import calendar  # To get month names
 from io import StringIO
 from sklearn.impute import KNNImputer
-
+from datetime import datetime
 # Configuring the page with Title, icon, and layout
 st.set_page_config(
     page_title="EDA for Loan status",
@@ -149,11 +149,11 @@ def fill_missing_values(dataset, fill_options):
                 dataset[col].fillna(method='bfill', inplace=True)
     else:
         for col in fill_options.get("selected_categorical", []):
-            method = fill_options.get(col)
+            method = fill_options.get("selected_method_categorical")
             if method == 'mode':
                 dataset[col].fillna(dataset[col].mode()[0], inplace=True)
             elif method == 'constant':
-                constant_val = fill_options.get(f"constant_value_{col}", "Unknown")
+                constant_val = fill_options.get("constant_value_selected_categorical", "Unknown")
                 dataset[col].fillna(constant_val, inplace=True)
             elif method == 'ffill':
                 dataset[col].fillna(method='ffill', inplace=True)
@@ -184,7 +184,7 @@ def fill_missing_values(dataset, fill_options):
                     dataset[col].fillna(method='bfill', inplace=True)
     else:
         for col in fill_options.get("selected_numerical", []):
-            method = fill_options.get(col)
+            method = fill_options.get("selected_method_numerical")
             if method == 'mean':
                 dataset[col].fillna(dataset[col].mean(), inplace=True)
             elif method == 'median':
@@ -192,7 +192,7 @@ def fill_missing_values(dataset, fill_options):
             elif method == 'mode':
                 dataset[col].fillna(dataset[col].mode()[0], inplace=True)
             elif method == 'constant':
-                constant_val = fill_options.get(f"constant_value_{col}", 0.0)
+                constant_val = fill_options.get("constant_value_selected_numerical", 0.0)
                 dataset[col].fillna(constant_val, inplace=True)
             elif method == 'ffill':
                 dataset[col].fillna(method='ffill', inplace=True)
@@ -254,30 +254,32 @@ def display_missing_values(dataset, selected_features, view_option):
         styled_data = filtered_data.applymap(lambda x: 'Null' if pd.isnull(x) else x).style.applymap(highlight_missing)
         st.dataframe(styled_data)
 
+# Function to check for duplicates based on selected columns
+def check_duplicates(dataset, selected_columns):
+    if not selected_columns:
+        return pd.DataFrame()  # Return an empty DataFrame if no columns are selected
 
-# Function to check for duplicates based on selected type
-def check_duplicates(dataset, selected_type):
-    if selected_type == 'Credit':
-        subset = ['CONTRACT_CODE', 'CUST_SHORTNAME', 'DAO_NAME']
-    elif selected_type == 'Digital':
-        subset = ['CUSTOMER_CODE', 'CUST_MOTHER', 'NAME_1']
-    elif selected_type == 'CBEBIRR':
-        subset = ['PHONE_NUMBER', 'PERSON_ID', 'FIRST_NAME', 'SECOND_NAME', 'LAST_NAME', 'MOTHERS_FIRST_NAME', 'CUSTOMER_ID']
-    elif selected_type == 'FCY':
-        subset = ['RECID', 'CUSTOMER_NAME', 'CUSTOMER_ID']
-    else:
-        return pd.DataFrame()  # Return an empty DataFrame if the type is invalid
+    # Combine the selected columns into a single temporary column for duplication check
+    temp_dataset = dataset[selected_columns].astype(str).agg(' & '.join, axis=1)
 
-    # Create a combined column by joining values with " & "
-    dataset['combined'] = dataset[subset].astype(str).agg(' & '.join, axis=1)
+    # Debug: Show the combined values for duplication check
+    print("Combined column values for duplication check:\n", temp_dataset.head())
 
-    # Get duplicated rows based on the combined column
-    duplicates = dataset[dataset.duplicated(subset='combined', keep=False)]  # Keep all duplicates
+    # Identify duplicate entries based on the combined values
+    duplicate_indices = temp_dataset[temp_dataset.duplicated(keep=False)].index
 
-    # Optionally, remove the combined column
-    dataset.drop(columns=['combined'], inplace=True)
+    # Debug: Print duplicate indices to verify duplication identification
+    print("Duplicate indices:", duplicate_indices)
 
-    return duplicates
+    # Get the exact duplicate rows from the original dataset based on the indices, but only the selected columns
+    duplicate_rows = dataset.loc[duplicate_indices, selected_columns]
+
+    # Debug: Print the duplicate rows for verification
+    print("Duplicate rows:\n", duplicate_rows)
+
+    return duplicate_rows
+
+
 
 # Function to drop duplicates
 def drop_duplicates(dataset):
@@ -294,22 +296,22 @@ def horizontal_line(height=1, color="blue", margin="0.5em 0"):
 
 # Function to detect outliers using Z-score or IQR method (without removal)
 def detect_outliers(dataset, method, selected_column):
-    outliers_detected = None
-    
     if method == 'Z-score':
+        # Calculate Z-scores and filter for values with abs(Z-score) > 3
         z_scores = zscore(dataset[selected_column])
         abs_z_scores = np.abs(z_scores)
-        outliers_detected = abs_z_scores > 3  # Z-score threshold = 3
+        outliers = dataset[abs_z_scores > 3][selected_column]  # Return only outlier values
 
     elif method == 'IQR':
+        # Calculate IQR and filter for values outside the 1.5 * IQR range
         Q1 = dataset[selected_column].quantile(0.25)
         Q3 = dataset[selected_column].quantile(0.75)
         IQR = Q3 - Q1
         lower_bound = Q1 - 1.5 * IQR
         upper_bound = Q3 + 1.5 * IQR
-        outliers_detected = (dataset[selected_column] < lower_bound) | (dataset[selected_column] > upper_bound)
+        outliers = dataset[(dataset[selected_column] < lower_bound) | (dataset[selected_column] > upper_bound)][selected_column]
 
-    return outliers_detected
+    return outliers
 
 # Function to remove outliers using Z-score or IQR method
 def remove_outliers(dataset, outliers_detected):
@@ -321,33 +323,80 @@ def remove_outliers(dataset, outliers_detected):
 # Initialize outliers_detected as None at the top
 outliers_detected = None
 
-# Function to check for inconsistent date formats
-def check_inconsistent_dates(dataset):
-    inconsistent_dates = {}
-    for col in dataset.columns:
-        if pd.api.types.is_datetime64_any_dtype(dataset[col]):
-            # Check for different date formats
-            unique_dates = dataset[col].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notnull(x) else None).unique()
-            inconsistent_dates[col] = unique_dates
-    return inconsistent_dates
+# Define mappings for consistency checks (all lowercase for case-insensitivity)
+title_gender_map = {'mr': 'Male', 'Mr': 'Male','MR': 'Male','mrs': 'Female', 'Mrs': 'Female', 'MRS': 'Female', 'ms': 'Female'}
+region_city_map = {
+    'Addis Ababa': 'Addis Ababa', 'Tigray': 'Mekelle', 'Afar': 'Samera',
+    'Amhara': 'Bahir Dar', 'Oromia': 'Adama', 'Somali': 'Somali',
+    'Benishangul-Gumuz': 'Assosa', 'Southern Nations, Nationalities and Peoples Region (SNNPR)': 'Hawassa',
+    'Gambella': 'Gambella', 'Harari': 'Harari', 'Dire Dawa': 'Dire Dawa'
+}
 
-# Function to check for inconsistent capitalizations in categorical columns
-def check_inconsistent_categoricals(dataset):
-    inconsistent_categories = {}
-    categorical_cols = dataset.select_dtypes(include=['object']).columns
-    for col in categorical_cols:
-        # Find unique values with different capitalizations
-        lower_values = dataset[col].str.lower().unique()
-        inconsistent_categories[col] = lower_values
-    return inconsistent_categories
+# Function to check inconsistencies based on the selected type
+def check_inconsistencies(dataset, selected_type):
+    inconsistencies = {}
+
+    # Perform checks specific to CBEBIRR or Digital type
+    if selected_type in ['CBEBIRR', 'Digital']:
+        # Convert TITLE to lowercase for case-insensitive mapping
+        title_gender_inconsistencies = dataset[
+            (dataset['TITLE'].str.lower().map(title_gender_map) != dataset['GENDER'])
+        ]
+        if not title_gender_inconsistencies.empty:
+            inconsistencies['TITLE-GENDER'] = title_gender_inconsistencies[['TITLE', 'GENDER']]
+
+    # Perform checks specific to CBEBIRR type
+    if selected_type == 'CBEBIRR':
+        # Check REGION and CITY consistency
+        region_city_inconsistencies = dataset[
+            (dataset['REGION'].map(region_city_map) != dataset['CITY'])
+        ]
+        if not region_city_inconsistencies.empty:
+            inconsistencies['REGION-CITY'] = region_city_inconsistencies[['REGION', 'CITY']]
+    
+    return inconsistencies
+
+# Function to validate data based on selected type
+def validate_data(dataset, selected_type):
+    if selected_type == "CBEBIRR":
+        # Validate PHONE_NUMBER length (must be between 8 and 13 digits)
+        invalid_phone = dataset[(dataset['PHONE_NUMBER'].astype(str).str.len() > 13) | (dataset['PHONE_NUMBER'].astype(str).str.len() < 9)]
+        if not invalid_phone.empty:
+            st.warning("Invalid PHONE_NUMBER entries: Phone number must be between 9 and 13 digits.")
+            st.write("Entries with invalid PHONE_NUMBER length:")
+            st.write(invalid_phone[['PHONE_NUMBER']])
+        else:
+            st.success("All PHONE_NUMBER entries are valid (between 9 and 13 digits).")
+
+        # Calculate age and validate
+        dataset['AGE'] = dataset['DATE_OF_BIRTH'].apply(lambda x: datetime.now().year - x.year if pd.notnull(x) else None)
+        invalid_age = dataset[dataset['AGE'] > 120]
+        if not invalid_age.empty:
+            st.warning("Invalid DATE_OF_BIRTH entries: Age must not exceed 120.")
+            st.write("Entries with age greater than 120:")
+            st.write(invalid_age[['DATE_OF_BIRTH', 'AGE']])
+        else:
+            st.success("All DATE_OF_BIRTH entries are valid (age not exceeding 120).")
+
+    elif selected_type == "Digital":
+        # Calculate age and validate
+        dataset['AGE'] = dataset['DATE_OF_BIRTH'].apply(lambda x: datetime.now().year - x.year if pd.notnull(x) else None)
+        invalid_age = dataset[dataset['AGE'] > 120]
+        if not invalid_age.empty:
+            st.warning("Invalid DATE_OF_BIRTH entries: Age must not exceed 120.")
+            st.write("Entries with age greater than 120:")
+            st.write(invalid_age[['DATE_OF_BIRTH', 'AGE']])
+        else:
+            st.success("All DATE_OF_BIRTH entries are valid (age not exceeding 120).")
+
 
 # Data Quality Section in Sidebar
-st.sidebar.header('Data Quality Metrix')
+st.sidebar.header('Data Quality Metrix/Data Profile')
 # Separator for Data Overview section
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
 # Section for Data Overview (Datatype, Mean, Median, Standard Deviation)
-st.sidebar.header('0. Data Profile')
+st.sidebar.header('0. Data Description')
 
 # Function to convert columns to datetime if they represent dates or times
 def convert_to_datetime(dataset):
@@ -359,11 +408,12 @@ def convert_to_datetime(dataset):
             dataset[col] = temp  # Only update if it's a date/time column
     return dataset
 
+
 # Conver date columns before displaying the data profile
 dataset = convert_to_datetime(dataset)
 
 # Button to show data types, mean, median, standard deviation, min, max, and range
-if st.sidebar.button('Data Profile'):
+if st.sidebar.button('Data Description'):
     # Calculate range (max - min)
     range_values = dataset.max(numeric_only=True) - dataset.min(numeric_only=True)
 
@@ -379,17 +429,19 @@ if st.sidebar.button('Data Profile'):
     })
     
     # Display the data overview table
-    st.write("Data Profile (Datatype, Mean, Median, Std Deviation, Min, Max, Range):")
+    st.write("Data Description (Datatype, Mean, Median, Std Deviation, Min, Max, Range):")
     st.dataframe(data_info)
 
 # Separator before "1. Missing Value"
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
 # Display all features with checkboxes
+st.sidebar.header("1. View for Missing Values")
 st.sidebar.write("Select Features to Include in Missing Values Analysis")
 selected_features = st.sidebar.multiselect("Features", options=dataset.columns, default=[])
 
 # Allow the user to choose the method to view missing values
+
 view_option = st.sidebar.radio('Select View for Missing Values', 
                                ['Total Null Values', 
                                 'Total Nulls by Table', 
@@ -406,8 +458,6 @@ if st.sidebar.button('Show Missing Values'):
         st.warning("Please select at least one feature to analyze missing values.")
 
 # Separator for Fill Missing Values section
-st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
-
 st.sidebar.header("2. Fill Missing Values")
 
 # Ensure the dataset is loaded
@@ -419,45 +469,65 @@ if 'dataset' in locals() and not dataset.empty:
 
     # Categorical features fill options
     st.sidebar.subheader("Categorical Features")
-    fill_all_categorical = st.sidebar.checkbox("Apply method to all categorical features")
+    fill_all_categorical = st.sidebar.checkbox("Apply a single method to all categorical features")
     if fill_all_categorical:
-        selected_method_categorical = st.sidebar.selectbox("Select fill method for all categorical features", 
-                                                           options=["mode", "constant", "ffill", "bfill"], 
-                                                           index=0)
+        selected_method_categorical = st.sidebar.selectbox(
+            "Select fill method for all categorical features",
+            options=["mode", "constant", "ffill", "bfill"],
+            index=0
+        )
         fill_options["all_categorical"] = selected_method_categorical
         if selected_method_categorical == 'constant':
-            fill_options["constant_value_categorical"] = st.sidebar.text_input("Enter constant value for all categorical features", value="Unknown")
+            fill_options["constant_value_categorical"] = st.sidebar.text_input(
+                "Enter constant value for all categorical features", value="Unknown"
+            )
     else:
-        selected_categorical_features = st.sidebar.multiselect("Select categorical features", options=categorical_cols)
+        selected_categorical_features = st.sidebar.multiselect(
+            "Select specific categorical features", options=categorical_cols
+        )
         fill_options["selected_categorical"] = selected_categorical_features
-        for col in selected_categorical_features:
-            selected_method = st.sidebar.selectbox(f"Select fill method for {col}", 
-                                                   options=["mode", "constant", "ffill", "bfill"], 
-                                                   index=0)
-            fill_options[col] = selected_method
+        if selected_categorical_features:
+            selected_method = st.sidebar.selectbox(
+                "Select fill method for selected categorical features",
+                options=["mode", "constant", "ffill", "bfill"],
+                index=0
+            )
+            fill_options["selected_method_categorical"] = selected_method
             if selected_method == 'constant':
-                fill_options[f"constant_value_{col}"] = st.sidebar.text_input(f"Enter constant value for {col}", value="Unknown")
+                fill_options["constant_value_selected_categorical"] = st.sidebar.text_input(
+                    "Enter constant value for selected categorical features", value="Unknown"
+                )
 
     # Numerical features fill options
     st.sidebar.subheader("Numerical Features")
-    fill_all_numerical = st.sidebar.checkbox("Apply method to all numerical features")
+    fill_all_numerical = st.sidebar.checkbox("Apply a single method to all numerical features")
     if fill_all_numerical:
-        selected_method_numerical = st.sidebar.selectbox("Select fill method for all numerical features", 
-                                                         options=["mean", "median", "mode", "constant", "ffill", "bfill", "KNN"], 
-                                                         index=0)
+        selected_method_numerical = st.sidebar.selectbox(
+            "Select fill method for all numerical features",
+            options=["mean", "median", "mode", "constant", "ffill", "bfill", "KNN"],
+            index=0
+        )
         fill_options["all_numerical"] = selected_method_numerical
         if selected_method_numerical == 'constant':
-            fill_options["constant_value_numerical"] = st.sidebar.number_input("Enter constant value for all numerical features", value=0.0)
+            fill_options["constant_value_numerical"] = st.sidebar.number_input(
+                "Enter constant value for all numerical features", value=0.0
+            )
     else:
-        selected_numerical_features = st.sidebar.multiselect("Select numerical features", options=numerical_cols)
+        selected_numerical_features = st.sidebar.multiselect(
+            "Select specific numerical features", options=numerical_cols
+        )
         fill_options["selected_numerical"] = selected_numerical_features
-        for col in selected_numerical_features:
-            selected_method = st.sidebar.selectbox(f"Select fill method for {col}", 
-                                                   options=["mean", "median", "mode", "constant", "ffill", "bfill", "KNN"], 
-                                                   index=0)
-            fill_options[col] = selected_method
+        if selected_numerical_features:
+            selected_method = st.sidebar.selectbox(
+                "Select fill method for selected numerical features",
+                options=["mean", "median", "mode", "constant", "ffill", "bfill", "KNN"],
+                index=0
+            )
+            fill_options["selected_method_numerical"] = selected_method
             if selected_method == 'constant':
-                fill_options[f"constant_value_{col}"] = st.sidebar.number_input(f"Enter constant value for {col}", value=0.0)
+                fill_options["constant_value_selected_numerical"] = st.sidebar.number_input(
+                    "Enter constant value for selected numerical features", value=0.0
+                )
 
     # Apply fill method if button is clicked
     if st.sidebar.button("Fill Missing Values"):
@@ -478,25 +548,41 @@ else:
 # Separator for Duplicates section
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
-# Section to Check for Duplicates
+# Sidebar Section to Check for Duplicates
 st.sidebar.header('3. Duplicate Value')
 
 # Dropdown to select the type of check
 selected_type = st.sidebar.selectbox('Select Type to Check for Duplicates', ['Credit', 'Digital', 'CBEBIRR', 'FCY'])
 
+# Allow user to multi-select columns for duplication check
+if dataset is not None and not dataset.empty:
+    selected_columns = st.sidebar.multiselect(
+        f'Select columns for {selected_type} duplicate check',
+        options=dataset.columns,  # Allow selection from all columns in the dataset
+    )
+else:
+    selected_columns = []
+
 # Button to check for duplicate values
 if st.sidebar.button('Check for Duplicates'):
     if dataset is not None and not dataset.empty:
-        duplicates_df = check_duplicates(dataset, selected_type)
+        # Debug: Print the dataset to verify the structure
+        print("Dataset columns:", dataset.columns)
+        
+        duplicates_df = check_duplicates(dataset, selected_columns)
         duplicate_count = duplicates_df.shape[0]  # Count the number of duplicated rows
+
         if duplicate_count > 0:
             st.write(f"Total Duplicated Rows for {selected_type}: {duplicate_count}")
-            st.dataframe(duplicates_df)  # Display the duplicated rows
+            st.write("Here are the exact duplicate rows (only selected columns) for cross-checking:")
+            st.dataframe(duplicates_df)  # Display only the selected columns for duplicated rows
         else:
             st.write("No duplicated rows found.")
     else:
         st.write("No data available. Please upload a valid dataset.")
 
+
+        
 # Option to remove duplicates
 if st.sidebar.button('Drop Duplicates'):
     dataset = drop_duplicates(dataset)
@@ -538,17 +624,25 @@ st.sidebar.header('5. Outlier Detection')
 numerical_columns = dataset.select_dtypes(include=['number']).columns
 outlier_column = st.sidebar.selectbox('Select Numerical Column for Outlier Detection', numerical_columns)
 
-# Dropdown to select the method for outlier detection (radio box)
+# Dropdown to select the method for outlier detection
 outlier_method = st.sidebar.radio('Select Outlier Detection Method', ['Z-score', 'IQR'])
 
 # Button to detect outliers
 if st.sidebar.button('Detect Outliers'):
     if outlier_column:
-        outliers_detected = detect_outliers(dataset, outlier_method, outlier_column)
-        st.write(f"Outliers detected in '{outlier_column}' using {outlier_method}: {outliers_detected.sum()} outliers.")
+        outliers = detect_outliers(dataset, outlier_method, outlier_column)
         
-        # Display boxplot before outlier removal
-        st.write(f"Box Plot for '{outlier_column}' before outlier removal:")
+        st.write(f"Outliers detected in '{outlier_column}' using {outlier_method}:")
+
+        # Display exact outlier values if any found
+        if not outliers.empty:
+            st.write("Exact outlier values from the dataset:")
+            st.dataframe(outliers.reset_index().rename(columns={outlier_column: 'Outlier Value'}))
+        else:
+            st.write("No outliers detected.")
+
+        # Display boxplot for visualizing outliers
+        st.write(f"Box Plot for '{outlier_column}':")
         fig, ax = plt.subplots(figsize=(6, 4))
         sns.boxplot(x=dataset[outlier_column], ax=ax)
         st.pyplot(fig)
@@ -598,27 +692,39 @@ if st.sidebar.button('Remove Outliers'):
 #  separator
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
-# Section for Data Inconsistency
+# Section for Data Inconsistency 
 st.sidebar.header('7. Data Inconsistency')
-
-# Button to check for inconsistent date formats
-if st.sidebar.button('Check Date Inconsistency'):
-    inconsistent_dates = check_inconsistent_dates(dataset)
-    st.write('Inconsistent Date Formats:')
-    for col, unique_formats in inconsistent_dates.items():
-        if len(unique_formats) > 1:  # Show columns with more than one unique date format
-            st.write(f"Column: {col}, Unique Date Formats: {unique_formats}")
-
-# Button to check for inconsistent capitalizations in categorical columns
-if st.sidebar.button('Check Categorical Inconsistency'):
-    inconsistent_categoricals = check_inconsistent_categoricals(dataset)
-    st.write('Inconsistent Capitalizations in Categorical Columns:')
-    for col, unique_vals in inconsistent_categoricals.items():
-        if len(unique_vals) > 1:  # Show columns with inconsistencies
-            st.write(f"Column: {col}, Unique Values (Case-Insensitive): {unique_vals}")
+# Dropdown for selecting the type
+selected_type = st.sidebar.selectbox('Select Type', options=['CBEBIRR', 'Credit', 'Digital', 'FCY'])
+# Button to check inconsistencies based on selected type
+if st.sidebar.button('Check Inconsistencies'):
+    # Display specific inconsistencies based on type
+    specific_inconsistencies = check_inconsistencies(dataset, selected_type)
+    if specific_inconsistencies:
+        st.write(f'{selected_type}-Specific Inconsistencies:')
+        for key, df in specific_inconsistencies.items():
+            st.write(f"{key} Inconsistencies:")
+            st.write(df)
+    else:
+        st.write(f"No {selected_type}-specific inconsistencies found.")
 # Final separator
 st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 
+# Button to check validation
+# Sidebar for dataset type selection
+# Sidebar for dataset type selection
+st.sidebar.header('8. Data Validity')
+dataset_type = st.sidebar.selectbox("Select Dataset Type", options=["CBEBIRR", "Credit", "Digital", "FCY"])
+
+# Validate button in the sidebar
+if st.sidebar.button("Check Validity"):
+    # Ensure the dataset is already loaded in the environment
+    try:
+        validate_data(dataset, dataset_type)
+    except NameError:
+        st.error("Dataset not found. Please load your dataset before validation.")
+# Final separator
+st.sidebar.markdown(horizontal_line(), unsafe_allow_html=True)
 ####################### End of Code ############################
 
 
